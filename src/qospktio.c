@@ -133,7 +133,8 @@ get_timestamp(uint64_t* pTime)
     struct timeval now;
     uint64_t	   temp;
 
-    ioctl(g_osl->sock, SIOCGSTAMP, &now);
+    //ioctl(g_osl->sock, SIOCGSTAMP, &now);
+    gettimeofday(&now, NULL);
     temp = now.tv_sec * (uint64_t)1000000UL;
     *pTime = temp + now.tv_usec;
 }

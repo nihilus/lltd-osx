@@ -20,12 +20,12 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <sys/socket.h>
-#include <features.h>
-#include <netpacket/packet.h>
-//#include <net/ethernet.h>
+#include <net/if_dl.h>
+#include <net/ethernet.h>
 #include <net/if_arp.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <ifaddrs.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -39,7 +39,7 @@
 #endif
 
 /* Do you have wireless extensions available? (most modern kernels do) */
-#define HAVE_WIRELESS
+//#define HAVE_WIRELESS
 
 #ifdef HAVE_WIRELESS
   /* for get access-point address (BSSID) and infrastructure mode */
@@ -66,29 +66,18 @@
 
 #include "packetio.h"
 
-#ifdef BCM_WIRELESS
-#include <typedefs.h>
-#include <wlioctl.h>
-#include <wlutils.h>
-#endif
-
 /* helper functions */
 
 /* Convert from name "interface" to its index, or die on error. */
 static int
 if_get_index(int sock, char *interface)
 {
-    struct ifreq req;
-    int ret;
-
-    memset(&req, 0, sizeof(req));
-    strncpy(req.ifr_name, interface, sizeof(req.ifr_name));
-    ret = ioctl(sock, SIOCGIFINDEX, &req);
-    if (ret != 0)
+    int ret = if_nametoindex(interface);
+    if (ret == 0)
 	die("if_get_index: for interface %s: %s\n",
 	    interface, strerror(errno));
 
-    return req.ifr_ifindex;
+    return ret;
 }
 
 
@@ -172,10 +161,10 @@ osl_write_pidfile(osl_t *osl)
 void
 osl_interface_open(osl_t *osl, char *interface, void *state)
 {
-    struct sockaddr_ll addr;
+    struct sockaddr_dl addr;
     int ret;
 
-    osl->sock = socket(PF_PACKET, SOCK_RAW, TOPO_ETHERTYPE);
+    osl->sock = socket(AF_LINK, SOCK_RAW, TOPO_ETHERTYPE);
     if (osl->sock < 0)
 	die("osl_interface_open: open %s failed: %s\n",
 	    interface, strerror(errno));
@@ -186,14 +175,14 @@ osl_interface_open(osl_t *osl, char *interface, void *state)
 
     /* set filter to only topology frames on this one interface */
     memset(&addr, 0, sizeof(addr));
-    addr.sll_family = AF_PACKET;
-    addr.sll_protocol = TOPO_ETHERTYPE;
-    addr.sll_ifindex = if_get_index(osl->sock, interface);
-    DEBUG({printf("binding raw socket (index= %d, fd=%d) on %s to TOPO_ETHERTYPE\n", addr.sll_ifindex, osl->sock, osl->responder_if);})
+    addr.sdl_family = AF_LINK;
+    /*addr.sll_protocol = TOPO_ETHERTYPE;*/
+    addr.sdl_index = if_get_index(osl->sock, interface);
+    DEBUG({printf("binding raw socket (index= %d, fd=%d) on %s to TOPO_ETHERTYPE\n", addr.sdl_index, osl->sock, osl->responder_if);})
     ret = bind(osl->sock, (struct sockaddr*)&addr, sizeof(addr));
     if (ret != 0)
 	die("osl_interface_open: binding to interface %s (index %d): %s\n",
-	    osl->responder_if, addr.sll_ifindex, strerror(errno));
+	    osl->responder_if, addr.sdl_index, strerror(errno));
 
     event_add_io(osl->sock, packetio_recv_handler, state);
 }
@@ -256,7 +245,7 @@ static bool_t
 get_hwaddr(const char *interface, /*OUT*/ etheraddr_t *addr,
 	   bool_t expect_ethernet)
 {
-    int rqfd;
+/*    int rqfd;
     struct ifreq req;
     int ret;
 
@@ -283,7 +272,25 @@ get_hwaddr(const char *interface, /*OUT*/ etheraddr_t *addr,
 	return FALSE;
     }
 
-    memcpy(addr, req.ifr_hwaddr.sa_data, sizeof(*addr));
+    memcpy(addr, req.ifr_hwaddr.sa_data, sizeof(*addr));*/
+
+	struct ifaddrs *ifa, *p;
+	struct sockaddr_dl *sdp;
+        
+	if (getifaddrs(&ifa) == -1){
+                return FALSE;
+    }
+                
+	p = ifa;
+	while(p){
+		if(p->ifa_addr->sa_family == AF_LINK && strcmp(interface, p->ifa_name) == 0){
+			sdp = (struct sockaddr_dl *)p->ifa_addr;
+			(void)memcpy(addr, LLADDR(sdp), ETHER_ADDR_LEN);
+ 			 break;
+ 		}
+ 		p = p->ifa_next;
+	}
+    freeifaddrs(ifa);   
     return TRUE;
 }
 
@@ -541,8 +548,50 @@ get_physical_medium(void *data)
     return TLV_GET_SUCCEEDED;
 }
 
-#ifdef HAVE_WIRELESS
+#ifndef HAVE_WIRELESS
 
+/* Return TRUE on successful query, setting "wireless_mode" to:
+ *  0 = ad-hoc mode
+ *  1 = infrastructure mode ie ESS (Extended Service Set) mode
+ *  2 = auto/unknown (device may auto-switch between ad-hoc and infrastructure modes)
+ */
+int
+get_wireless_mode(void *data)
+{
+/*    TLVDEF( uint32_t,         wireless_mode,       ,   4,  Access_unset ) */
+
+    uint32_t* wl_mode = (uint32_t*) data;
+  	*wl_mode = 2;
+  
+    return TLV_GET_SUCCEEDED;
+}
+
+
+/* If the interface is 802.11 wireless in infrastructure mode, and it
+ * has successfully associated to an AP (Access Point) then it will
+ * have a BSSID (Basic Service Set Identifier), which is usually the
+ * AP's MAC address. 
+ * Of course, this code resides in an AP, so this is actually quite
+ * meaningless. */
+int
+get_bssid(void *data)
+{
+/*    TLVDEF( etheraddr_t, bssid,               ,   5,  Access_unset ) */
+
+    return TLV_GET_FAILED;
+}
+
+int
+get_ssid(void *data)
+{
+/*    TLVDEF( ssid_t,           ssid,                ,   6,  Access_unset ) */
+
+//    ssid_t* ssid = (ssid_t*) data;
+
+    return TLV_GET_FAILED;
+}
+
+#else
 /* Return TRUE on successful query, setting "wireless_mode" to:
  *  0 = ad-hoc mode
  *  1 = infrastructure mode ie ESS (Extended Service Set) mode
@@ -555,8 +604,6 @@ get_wireless_mode(void *data)
 
     uint8_t* wl_mode = (uint8_t*) data;
     int ret;
-
-#ifndef BCM_WIRELESS
     int rqfd;
     struct iwreq req;
 
@@ -615,21 +662,6 @@ get_wireless_mode(void *data)
         END_TRACE
 	return TLV_GET_FAILED;
     }
-#else
-    int infra;
-
-    ret = wl_ioctl(g_osl->wireless_if, WLC_GET_INFRA, &infra, sizeof(infra));
-
-    if (ret != 0)
-    {
-	if (errno != EOPNOTSUPP)
-	    warn("get_wireless_mode: get mode failed: %s\n",
-		 strerror(errno));
-        return TLV_GET_FAILED;
-    }
-
-    *wl_mode = (infra) ? 1 : 0;
-#endif
 
     IF_TRACED(TRC_TLVINFO)
         printf("get_wireless_mode(): wireless_mode=%d\n", *wl_mode);
@@ -652,8 +684,6 @@ get_bssid(void *data)
 
     etheraddr_t* bssid = (etheraddr_t*) data;
     int ret;
-
-#ifndef BCM_WIRELESS
     struct iwreq req;
     memset(&req, 0, sizeof(req));
 
@@ -677,17 +707,6 @@ get_bssid(void *data)
         return TLV_GET_FAILED;
     }
     memcpy(bssid, req.u.ap_addr.sa_data, sizeof(etheraddr_t));
-#else
-    ret = wl_ioctl(g_osl->wireless_if, WLC_GET_BSSID, bssid, sizeof(etheraddr_t));
-
-    if (ret != 0)
-    {
-	if (errno != EOPNOTSUPP)
-	    warn("get_bssid: get associated Access Point MAC failed: %s\n",
-		 strerror(errno));
-        return TLV_GET_FAILED;
-    }
-#endif
 
     IF_TRACED(TRC_TLVINFO)
         printf("get_bssid(): bssid=" ETHERADDR_FMT "\n", ETHERADDR_PRINT(bssid));
@@ -704,8 +723,6 @@ get_ssid(void *data)
 
     ssid_t* ssid = (ssid_t*) data;
     int ret;
-
-#ifndef BCM_WIRELESS
     int rqfd;
     struct iwreq req;
 
@@ -733,23 +750,6 @@ get_ssid(void *data)
     ssid->ssidLen = req.u.essid.length;
 
     free(req.u.essid.pointer);
-#else
-    wlc_ssid_t req;
-
-    ret = wl_ioctl(g_osl->wireless_if, WLC_GET_SSID, &req, sizeof(req));
-
-    if (ret != 0)
-    {
-	if (errno != EOPNOTSUPP)
-    	    warn("get_ssid: get ssid failed: %s\n",
-    		 strerror(errno));
-	return TLV_GET_FAILED;
-    }
-
-    memset(ssid->ssid, 0, 32);    
-    memcpy(ssid->ssid, req.SSID, req.SSID_len);
-    ssid->ssidLen = req.SSID_len;
-#endif
 
     IF_TRACED(TRC_TLVINFO)
         printf("get_ssid(): ssid=%s\n", ssid->ssid);
@@ -1134,81 +1134,7 @@ get_accesspt_assns(void *data)
     assns_t* assns = (assns_t*) data;
     int ret;
 
-#ifdef BCM_WIRELESS
-    #define MAX_STA_COUNT 256
-    struct timeval  now;
-    struct maclist *auth;
-    int auth_size;
-    //sta_info_t sta;
-    int i;
-
-    if (assns->table == NULL)
-    {
-        /* generate the associations-table */
-        assns->table = (assn_table_entry_t*)xmalloc(MAX_STA_COUNT*sizeof(assn_table_entry_t));
-        assns->assn_cnt = 0;
-    }
-
-    /* The writer routine will zero out the assn_cnt when it sends the last packet of the LTLV..
-     * Keep the table around for two seconds at most, and refresh if older than that.
-     */
-    gettimeofday(&now, NULL);
-
-    if ((now.tv_sec - assns->collection_time.tv_sec) > 5)
-    {
-        assns->assn_cnt = 0;
-    }
-
-    /* Force a re-assessment, whenever the count is zero */
-    if (assns->assn_cnt == 0)
-    {
-	/* buffers and length */
-	auth_size = sizeof(auth->count) + MAX_STA_COUNT*sizeof(auth->ea[0]);
-	auth = (struct maclist*)xmalloc(auth_size);
-
-	//strcpy((char*)auth, "authe_sta_list");
-	//ret = wl_ioctl(g_osl->wireless_if, WLC_GET_VAR, auth, auth_size);
-	auth->count = MAX_STA_COUNT;
-	ret = wl_ioctl(g_osl->wireless_if, WLC_GET_ASSOCLIST, auth, auth_size);
-
-	if (ret != 0)
-	{
-	    if (errno != EOPNOTSUPP)
-    		warn("get_accesspt_assns: get authe_sta_list faild: %s\n",
-    		    strerror(errno));
-	    if (auth) xfree(auth);
-
-	    return TLV_GET_FAILED;
-	}
-
-        for(i = 0; i < auth->count; i++)
-	{
-	    //strcpy((char*)&sta, "sta_info");
-	    //memcpy((char*)&sta + strlen((char*)&sta) + 1, maclist[i]->ea, sizeof(etheraddr_t));
-
-	    //if (!wl_ioctl(g_osl->wireless_if, WLC_GET_VAR, &sta, sizeof(sta_info_t)))
-	    //{
-	    //	sta_info_t *sta = (sta_info_t *)buf;
-	    //	uint32 f = sta->flags;
-	    //}
-
-	    memcpy(&assns->table[i].MACaddr, &auth->ea[i], sizeof(auth->ea[0]));
-	    assns->table[i].MOR = htons(108);       // units of 1/2 Mb per sec
-	    assns->table[i].PHYtype = WPM_DSSS_24G; // DSSS 2.4 GHZ (802.11g)
-	    IF_TRACED(TRC_TLVINFO)
-		printf("get_accesspt_assns(): assoc=" ETHERADDR_FMT "\n", ETHERADDR_PRINT((etheraddr_t*)&auth->ea[i]));
-	    END_TRACE
-	}
-	assns->assn_cnt = auth->count;
-	assns->collection_time = now;
-
-	if (auth) xfree(auth);
-    }
-
-    return TLV_GET_SUCCEEDED;
-#else
     return TLV_GET_FAILED;
-#endif
 }
 
 
@@ -1330,9 +1256,8 @@ get_repeaterAP_lineage(void *data)
 /*    TLVDEF( comptbl_t,    repeaterAP_lineage,  , 0x1B, Access_unset, TRUE ) */
 
     aplineage_t* root_ap_bssid = (aplineage_t*) data;
+ #if 0
     int ret;
-
-#ifndef BCM_WIRELESS
     int rqfd;
     struct iwreq req;
 
@@ -1365,7 +1290,6 @@ get_repeaterAP_lineage(void *data)
         root_ap_bssid->count = 1;
     }
     else
-#endif
         root_ap_bssid->count = 0;
 
     IF_TRACED(TRC_TLVINFO)
@@ -1373,4 +1297,8 @@ get_repeaterAP_lineage(void *data)
     END_TRACE
 
     return TLV_GET_SUCCEEDED;
+#else
+	return TLV_GET_FAILED;
+#endif
 }
+

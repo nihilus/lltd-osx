@@ -21,7 +21,7 @@
 
 #include <stdio.h>
 
-//#define __DEBUG__
+#define __DEBUG__
 #define CAN_FOPEN_IN_SELECT_LOOP 1
 #define USING_UNAME
 
