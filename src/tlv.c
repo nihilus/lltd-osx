@@ -460,7 +460,7 @@ write_assns_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isHel
     }
 
     /* seek to the supplied offset, if possible */
-    if (offset_index >= assns->assn_cnt)
+    if (offset_index && offset_index >= assns->assn_cnt)
     {
         warn("write-assns-list: Offset too big, empty list written\n");
         *buf++ = (uint8_t)0;
@@ -540,7 +540,7 @@ write_comptbl_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isH
     *buf++ = (uint8_t)0;
     
     /* then do the sub-tlvs in order, starting with the bridge component */
-    if (Bridge_Component != 0xFF)
+    if (ctbl->bridge_behavior != 0xFF)
     {
         *buf++ = (uint8_t) Bridge_Component;        // type
         *buf++ = 1;                                 // length
@@ -572,7 +572,7 @@ write_comptbl_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isH
     }
 
     /* Finally, do the switch component */
-    if (Switch_Component != 0xFFFFFFFF)
+    if (ctbl->link_speed != 0xFFFFFFFF)
     {
         *buf++ = (uint8_t) Switch_Component;        // type
         *buf++ = 4;                                 // length
@@ -591,6 +591,68 @@ write_comptbl_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isH
     return bytes_used;
 }
 
+static int
+write_ssid_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isHello, bool_t isLarge, size_t offset)
+{
+    if (bytes_free < (int)(2 + sizeof(ssid_t)))
+	    return 0;
+
+    IF_TRACED(TRC_TLVINFO)
+        dbgprintf("write_ssid_t(%s): ssid=%s\n", isLarge?"LTLV":"TLV",
+                  SSID_PRINT(((ssid_t*)data)));
+    END_TRACE
+
+    if (isHello)
+    {
+        /* write hdr in Hello-tlv format */
+        *buf = (uint8_t)number;
+        if (isLarge)
+        {
+            *(buf+1) = 0;
+            return 2;
+        } else {
+            *(buf+1) = SSID_LEN((ssid_t*)data);
+        }
+    } else {
+        /* write in QueryLargeTlvResp LTLV format */
+        /* replace: *(uint16_t*)buf = htons(sizeof(etheraddr_t)); with: */
+        g_short_reorder_buffer = htons(SSID_LEN((ssid_t*)data));
+        memcpy(buf, &g_short_reorder_buffer, 2);
+    }
+    /* replace: *((etheraddr_t*)(buf+2)) = *(etheraddr_t*)data; with: */
+    memcpy(buf+2, data, SSID_LEN((ssid_t*)data));
+    return SSID_LEN((ssid_t*)data) + 2;
+}
+
+static int
+write_aplineage_t(int number, void *data, uint8_t *buf, int bytes_free, bool_t isHello, bool_t isLarge, size_t offset)
+{
+    aplineage_t* root_ap_bssid = (aplineage_t*) data;
+
+    if (bytes_free < (int)(2 + sizeof(ssid_t)))
+	    return 0;
+
+    IF_TRACED(TRC_TLVINFO)
+        printf("write_aplineage_t: tlvnum:%d  isHello:%s  isLarge:%s  offset:" FMT_SIZET "\n",
+               number, isHello==TRUE?"true":"false", isLarge==TRUE?"true":"false", offset);
+    END_TRACE
+
+    if (isHello)
+    {
+        /* write hdr in Hello-tlv format */
+        *buf = (uint8_t)number;
+        if (root_ap_bssid->count == 0)
+        {
+            *(buf+1) = 0;
+            return 2;
+        } else
+            *(buf+1) = root_ap_bssid->count*sizeof(etheraddr_t);
+    }
+
+    /* replace: *((etheraddr_t*)(buf+2)) = *(etheraddr_t*)data; with: */
+    memcpy(buf+2, data, root_ap_bssid->count*sizeof(etheraddr_t));
+    return ((root_ap_bssid->count*sizeof(etheraddr_t)) + 2);
+}
 
 void *(NotUsed[]) = {write_uint16_t,write_ipv6addr_t};
 
