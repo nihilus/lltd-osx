@@ -15,4 +15,7 @@ depend:
 	$(CC) $(CFLAGS) -M $(DCFILES) >.depend
 	$(CC) $(CFLAGS) -M $(TCFILES) >>.depend
 
+clear:
+	rm -f *.o lld2d lld2test
+
 -include .depend
