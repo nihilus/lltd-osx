@@ -1,3 +1,6 @@
+lld2d
+lld2test
+
 # http://www.gnu.org/software/automake
 
 Makefile.in
