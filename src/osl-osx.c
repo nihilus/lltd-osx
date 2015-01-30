@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <time.h>
 
 /* We use the POSIX.1e capability subsystem to drop all but
  * CAP_NET_ADMIN rights */
@@ -164,7 +165,7 @@ osl_interface_open(osl_t *osl, char *interface, void *state)
     struct sockaddr_dl addr;
     int ret;
 
-    osl->sock = socket(AF_LINK, SOCK_RAW, TOPO_ETHERTYPE);
+    osl->sock = socket(PF_LINK, SOCK_RAW, TOPO_ETHERTYPE);
     if (osl->sock < 0)
 	die("osl_interface_open: open %s failed: %s\n",
 	    interface, strerror(errno));
@@ -609,7 +610,7 @@ get_wireless_mode(void *data)
 
     memset(&req, 0, sizeof(req));
     strncpy(req.ifr_ifrn.ifrn_name, g_osl->wireless_if, sizeof(req.ifr_ifrn.ifrn_name));
-//*/printf("get_wireless_mode: requesting addr for interface \'%s\'\n",g_osl->wireless_if);
+	//printf("get_wireless_mode: requesting addr for interface \'%s\'\n",g_osl->wireless_if);
     rqfd = socket(AF_INET,SOCK_DGRAM,0);
     if (rqfd<0)
     {
@@ -882,7 +883,7 @@ get_tsc_ticks_per_sec(void *data)
 
     uint64_t   ticks;
 
-    ticks = (uint64_t) 0xF4240LL;	// 1M (1us) ticks - YMMV
+    ticks = CLOCKS_PER_SEC;	// 1M (1us) ticks - YMMV
 
     cpy_hton64(data, &ticks);
 
