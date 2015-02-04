@@ -162,16 +162,17 @@ osl_write_pidfile(osl_t *osl)
 void
 osl_interface_open(osl_t *osl, char *interface, void *state)
 {
-  	static struct bpf_insn progcodes[] = {
-		BPF_STMT(BPF_LD+BPF_H+BPF_ABS, 12),
-		BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, ETHERTYPE_ARP, 0, 1),
-		BPF_STMT(BPF_RET+BPF_K, (sizeof(struct ether_arp) + sizeof(struct ether_header))),
-		BPF_STMT(BPF_RET+BPF_K, 0),
+	/* tcpdump -dd ether proto 0x88d9 */
+  	static struct bpf_insn lltd_filter[] = {
+		{ 0x28, 0, 0, 0x0000000c },
+		{ 0x15, 0, 1, 0x000088d9 },
+		{ 0x6, 0, 0, 0x00040000 },
+		{ 0x6, 0, 0, 0x00000000 },
   	};
 
     struct bpf_program prog;
-    prog.bf_len = (sizeof(progcodes) / sizeof(struct bpf_insn));
-    prog.bf_insns = progcodes;
+    prog.bf_len = (sizeof(lltd_filter) / sizeof(struct bpf_insn));
+    prog.bf_insns = lltd_filter;
   	
     osl->sock = bpf_new();
     if (osl->sock < 0){
@@ -246,19 +247,20 @@ osl_set_promisc(osl_t *osl, bool_t promisc)
     memset(&req, 0, sizeof(req));
     strncpy(req.ifr_name, osl->responder_if, sizeof(req.ifr_name)-1);
     ret = ioctl(osl->sock, SIOCGIFFLAGS, &req);
-    if (ret != 0)
-	die("osl_set_promisc: couldn't get interface flags for %s: %s\n",
-	    osl->responder_if, strerror(errno));
+    if (ret != 0){
+		die("osl_set_promisc: couldn't get interface flags for %s: %s\n", osl->responder_if, strerror(errno));
+    }
 
     /* now clear (and optionally set) the IFF_PROMISC bit */
     req.ifr_flags &= ~IFF_PROMISC;
-    if (promisc)
-	req.ifr_flags |= IFF_PROMISC;
+    if (promisc){
+		req.ifr_flags |= IFF_PROMISC;
+    }
 
     ret = ioctl(osl->sock, SIOCSIFFLAGS, &req);
-    if (ret != 0)
-	die("osl_set_promisc: couldn't set interface flags for %s: %s\n",
-	    osl->responder_if, strerror(errno));
+    if (ret != 0){
+		die("osl_set_promisc: couldn't set interface flags for %s: %s\n", osl->responder_if, strerror(errno));
+    }
 }
 
 
