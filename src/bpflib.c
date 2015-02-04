@@ -81,7 +81,7 @@ bpf_get_blen(int fd, int * blen)
 int
 bpf_set_promiscuous(int bpf_fd, int offon) /* NB: int offon = 1 will disable and int offon = 0 will enable. */
 {
-    return(ioctl(bpf_fd, BIOCPROMISC, offon));    
+    return(ioctl(bpf_fd, BIOCPROMISC, &offon));    
 } 
 
 /*
