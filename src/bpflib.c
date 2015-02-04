@@ -29,7 +29,6 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <net/bpf.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <errno.h>

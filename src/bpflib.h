@@ -24,6 +24,7 @@
 
 #ifndef _S_BPFLIB_H
 #define _S_BPFLIB_H
+#include <net/bpf.h>
 
 int bpf_get_blen(int fd, int * blen);
 int bpf_new();

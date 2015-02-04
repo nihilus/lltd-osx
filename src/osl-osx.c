@@ -21,8 +21,7 @@
 #include <ctype.h>
 #include <sys/socket.h>
 #include <net/if_dl.h>
-#include <net/ethernet.h>
-#include <net/if_arp.h>
+#include <netinet/if_ether.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <ifaddrs.h>
@@ -31,6 +30,7 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <time.h>
+
 
 /* We use the POSIX.1e capability subsystem to drop all but
  * CAP_NET_ADMIN rights */
@@ -162,30 +162,51 @@ osl_write_pidfile(osl_t *osl)
 void
 osl_interface_open(osl_t *osl, char *interface, void *state)
 {
-    struct sockaddr_dl addr;
-    int ret;
+  	static struct bpf_insn progcodes[] = {
+		BPF_STMT(BPF_LD+BPF_H+BPF_ABS, 12),
+		BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, ETHERTYPE_ARP, 0, 1),
+		BPF_STMT(BPF_RET+BPF_K, (sizeof(struct ether_arp) + sizeof(struct ether_header))),
+		BPF_STMT(BPF_RET+BPF_K, 0),
+  	};
 
-    osl->sock = socket(PF_LINK, SOCK_RAW, TOPO_ETHERTYPE);
-    if (osl->sock < 0)
-	die("osl_interface_open: open %s failed: %s\n",
-	    interface, strerror(errno));
+    struct bpf_program prog;
+    prog.bf_len = (sizeof(progcodes) / sizeof(struct bpf_insn));
+    prog.bf_insns = progcodes;
+  	
+    osl->sock = bpf_new();
+    if (osl->sock < 0){
+		die("osl_interface_open: open %s failed: %s\n", interface, strerror(errno));
+    }
 
     osl->responder_if = interface;
 
-    /* perhaps check interface flags indicate it is up? */
+ 	/* This is necessary for Mac OS X at least... */
+ 	if(bpf_set_immediate(osl->sock, 1) > 0) {
+	    bpf_dispose(osl->sock);
+    	die("osl_interface_open: [Error] (%d) : %s\n", errno, strerror(errno));
+    }
 
-    /* set filter to only topology frames on this one interface */
-    memset(&addr, 0, sizeof(addr));
-    addr.sdl_family = AF_LINK;
-    addr.sdl_alen = ETHER_ADDR_LEN;
-    /*addr.sll_protocol = TOPO_ETHERTYPE;*/
-    addr.sdl_index = if_get_index(osl->sock, interface);
-    DEBUG({printf("binding raw socket (index= %d, fd=%d) on %s to TOPO_ETHERTYPE\n", addr.sdl_index, osl->sock, osl->responder_if);})
-    ret = bind(osl->sock, (struct sockaddr*)&addr, sizeof(addr));
-    if (ret != 0)
-	die("osl_interface_open: binding to interface %s (index %d): %s\n",
-	    osl->responder_if, addr.sdl_index, strerror(errno));
+ 	if(ioctl(osl->sock, BIOCSETF, &prog) < 0) {
+    	bpf_dispose(osl->sock);
+     	die("osl_interface_open: [Error] (%d) : %s\n", errno, strerror(errno));
+    }
 
+	/* Set interface name to use */
+	if(bpf_setif(osl->sock, osl->responder_if) < 0) {
+   		bpf_dispose(osl->sock);
+		die("osl_interface_open: [Error] (%d) : %s\n", errno, strerror(errno));
+ 	} 
+ 
+	/* Set the socket to be non-blocking */
+	if (fcntl(osl->sock, F_SETFL, O_NONBLOCK) > 0) {
+    	bpf_dispose(osl->sock);
+		die("osl_interface_open: [Error] (%d) : %s\n", errno, strerror(errno));
+ 	}
+ 	
+ 	/* Turn on bpf echo cancellation */
+	bpf_see_sent(osl->sock, 1);
+ 
+    DEBUG({printf("binding raw socket (index= %d, fd=%d) on %s to TOPO_ETHERTYPE\n", if_nametoindex(osl->responder_if), osl->sock, osl->responder_if);})
     event_add_io(osl->sock, packetio_recv_handler, state);
 }
 
