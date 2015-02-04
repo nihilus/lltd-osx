@@ -29,7 +29,7 @@
 int bpf_set_timeout(int fd, struct timeval * tv_p);
 int bpf_get_data_link(int fd, u_int * dl_p);
 int bpf_get_blen(int fd, int * blen);
-int bpf_set_promiscuous(int bpf_fd, int offon);
+int bpf_set_promiscuous(int bpf_fd);
 int bpf_get_stats(int bpf_fd, struct bpf_stat *bs_p);
 int bpf_dispose(int bpf_fd);
 int bpf_new();

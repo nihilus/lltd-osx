@@ -79,9 +79,9 @@ bpf_get_blen(int fd, int * blen)
  an appropriate filter.
  */
 int
-bpf_set_promiscuous(int bpf_fd, int offon) /* NB: int offon = 1 will disable and int offon = 0 will enable. */
+bpf_set_promiscuous(int bpf_fd)
 {
-    return(ioctl(bpf_fd, BIOCPROMISC, &offon));    
+    return(ioctl(bpf_fd, BIOCPROMISC, NULL));    
 } 
 
 /*
