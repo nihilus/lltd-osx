@@ -64,7 +64,7 @@
 #include <errno.h>
 
 #include "globals.h"
-
+#include "bpflib.h" /* Kudos to Apple */
 #include "packetio.h"
 
 /* helper functions */
@@ -177,6 +177,7 @@ osl_interface_open(osl_t *osl, char *interface, void *state)
     /* set filter to only topology frames on this one interface */
     memset(&addr, 0, sizeof(addr));
     addr.sdl_family = AF_LINK;
+    addr.sdl_alen = ETHER_ADDR_LEN;
     /*addr.sll_protocol = TOPO_ETHERTYPE;*/
     addr.sdl_index = if_get_index(osl->sock, interface);
     DEBUG({printf("binding raw socket (index= %d, fd=%d) on %s to TOPO_ETHERTYPE\n", addr.sdl_index, osl->sock, osl->responder_if);})
@@ -300,7 +301,7 @@ void
 osl_get_hwaddr(osl_t *osl, /*OUT*/ etheraddr_t *addr)
 {
     if (!get_hwaddr(osl->responder_if, addr, TRUE))
-	die("osl_get_hw_addr: expected an ethernet address on our interface\n");
+		die("osl_get_hw_addr: expected an ethernet address on our interface\n");
 }
 
 

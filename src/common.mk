@@ -4,11 +4,11 @@
 .PHONY: clean all depend
 
 # Files for the Daemon and the Test-Tool
-DCFILES = $(OS_LAYER) main.c event.c util.c packetio.c band.c \
+DCFILES = $(OS_LAYER) bpflib.c main.c event.c util.c packetio.c band.c \
 	state.c sessionmgr.c enumeration.c mapping.c seeslist.c \
 	tlv.c qospktio.c
 
-TCFILES = $(OS_LAYER) ctmain.c event.c util.c ctpacketio.c ctstate.c
+TCFILES = $(OS_LAYER) bpflib.c ctmain.c event.c util.c ctpacketio.c ctstate.c
 
 DOBJFILES = $(patsubst %c,%o,$(DCFILES))
 TOBJFILES = $(patsubst %c,%o,$(TCFILES))

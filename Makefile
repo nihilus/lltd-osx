@@ -2,8 +2,8 @@ VPATH = src
 
 CC = gcc
 LD = gcc
-CFLAGS = -pipe -Wall -Wno-unused -O3 -g #-arch i386
-LDFLAGS = #-arch i386
+CFLAGS = -pipe -Wall -Wno-unused -O3 -g -D_DARWIN_C_SOURCE=1
+LDFLAGS =
 
 OS_LAYER = osl-osx.c
 
